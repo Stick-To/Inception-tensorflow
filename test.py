@@ -1,9 +1,8 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 import numpy as np
-import Inceptionv3 as net
+import Inceptionv3 as net # import Inceptionv4 as net
 import keras
 from keras.preprocessing.image import ImageDataGenerator
 import sys
@@ -30,7 +29,7 @@ train_gen = ImageDataGenerator(horizontal_flip=True,
 ).flow(x_train, y_train, batch_size=train_batch_size)
 test_gen = ImageDataGenerator().flow(x_test, y_test, batch_size=test_batch_size)
 
-
+#testnet = net.Inceptionv4
 testnet = net.Inceptionv3(data_shape, num_classes, l2_rate, keep_prob, 'channels_last')
 
 for epoch in range(epochs):

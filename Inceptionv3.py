@@ -4,6 +4,7 @@ from __future__ import print_function
 import tensorflow as tf
 import numpy as np
 
+
 class Inceptionv3:
 
     def __init__(self, input_shape, num_classes, l2_rate, keep_prob, data_format):
@@ -73,7 +74,6 @@ class Inceptionv3:
                 final_dense = self._conv_bn_activation(dropout, 1000, 1, 1, 'same', 'final_dense', None)
                 logit = tf.squeeze(final_dense, name='logit')
                 self.logit = tf.nn.softmax(logit, name='softmax')
-                loss = tf.losses.softmax_cross_entropy(self.labels, logit, label_smoothing=0.1, reduction=tf.losses.Reduction.MEAN)
         with tf.variable_scope('auxilary'):
             auxiliary_avgpool = self._avg_pooling(inception1_reduction, 5, 3, 'same', 'auxiliary_avgpool')
             self.auxiliary_outshape = self._compute_output_shape(self.auxiliary_outshape, 5, 'same', 3)
@@ -86,6 +86,8 @@ class Inceptionv3:
             auxiliary_loss = 0.4 * tf.losses.softmax_cross_entropy(self.labels, auxiliary_logit, label_smoothing=0.1, reduction=tf.losses.Reduction.MEAN)
 
         with tf.variable_scope('optimizer'):
+            loss = tf.losses.softmax_cross_entropy(self.labels, logit, label_smoothing=0.1, reduction=tf.losses.Reduction.MEAN)
+
             l2_loss = self.l2_rate * tf.add_n(
                 [tf.nn.l2_loss(var) for var in tf.trainable_variables()]
             )
@@ -319,9 +321,9 @@ class Inceptionv3:
             return tf.concat([branch_1x1, branch_1x1x3x3, branch_1x1x3x3x3x3, branch_pool1x1], axis=axes)
 
     def _compute_output_shape(self, shape, kernel, padding, strides):
-            assert(padding in ['same', 'valid'])
-            if 'padding' == 'same':
-                output_shape = np.ceil(shape / strides)
-            else:
-                output_shape = np.ceil((shape - kernel + 2 * (kernel // 2)) / strides)
-            return output_shape
+        assert(padding in ['same', 'valid'])
+        if padding == 'valid':
+            padded = 0
+        else:
+            padded = kernel // 2
+        return (shape - kernel + 2 * padded) // strides  + 1
