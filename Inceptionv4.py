@@ -8,8 +8,9 @@ import numpy as np
 class Inceptionv4:
 
     def __init__(self, input_shape, num_classes, l2_rate, keep_prob, data_format, klmn=(192, 224, 256, 384)):
+
+        assert((input_shape[0] >= 75) & (input_shape[1] >= 75))
         self.input_shape = input_shape
-        self.output_shape = np.array([input_shape[0], input_shape[1]], dtype=np.int32)
         self.num_classes = num_classes
         self.l2_rate = l2_rate
         self.prob = 1. - keep_prob
@@ -19,6 +20,7 @@ class Inceptionv4:
         self.data_format = data_format
         self.is_training = True
         self.global_step = tf.train.get_or_create_global_step()
+        self.output_shape = np.array([input_shape[0], input_shape[1]], dtype=np.int32)
 
         self._define_inputs()
         self._build_graph()
@@ -69,10 +71,10 @@ class Inceptionv4:
             inception_c_2 = self._inception_block_c(inception_c_1, 'inception_c_2')
             inception_c_3 = self._inception_block_c(inception_c_2, 'inception_c_3')
         with tf.variable_scope('classifier'):
-
+            #print(self.output_shape)
             global_pool = self._avg_pooling(inception_c_3, self.output_shape.astype(np.int32).tolist(), 1, 'valid', 'global_pool')
             dropout = self._dropout(global_pool, 'dropout')
-            final_dense = self._conv_bn_activation(dropout, 1000, 1, 1, 'valid', 'final_dense', None)
+            final_dense = self._conv_bn_activation(dropout, self.num_classes, 1, 1, 'valid', 'final_dense', None)
             logit = tf.squeeze(final_dense, name='logit')
             self.logit = tf.nn.softmax(logit, name='softmax')
         with tf.variable_scope('optimizer'):

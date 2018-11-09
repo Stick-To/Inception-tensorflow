@@ -9,9 +9,8 @@ class Inceptionv3:
 
     def __init__(self, input_shape, num_classes, l2_rate, keep_prob, data_format):
 
-        assert((input_shape[0] > 75) & (input_shape[1] > 75))
+        assert((input_shape[0] >= 43) & (input_shape[1] >= 43))
         self.input_shape = input_shape
-        self.output_shape = np.array([input_shape[0], input_shape[1]], dtype=np.int32)
         self.num_classes = num_classes
         self.l2_rate = l2_rate
         self.prob = 1. - keep_prob
@@ -20,6 +19,7 @@ class Inceptionv3:
 
         assert(data_format in ['channels_last', 'channels_first'])
         self.data_format = data_format
+        self.output_shape = np.array([input_shape[0], input_shape[1]], dtype=np.int32)
 
         self._define_input()
         self._build_graph()
@@ -68,10 +68,10 @@ class Inceptionv3:
                 inception3_1 = self._inception_block3(inception2_reduction, [320, 384, 448, 192], 'inception3_1')
                 inception3_2 = self._inception_block3(inception3_1, [320, 384, 448, 192], 'inception3_2')
             with tf.variable_scope('classifier'):
-                # print(self.output_shape)
+                print(self.output_shape)
                 global_pool = self._max_pooling(inception3_2, self.output_shape.astype(np.int32).tolist(), 1, 'valid', 'global_pool')
                 dropout = self._dropout(global_pool, 'dropout')
-                final_dense = self._conv_bn_activation(dropout, 1000, 1, 1, 'same', 'final_dense', None)
+                final_dense = self._conv_bn_activation(dropout, self.num_classes, 1, 1, 'same', 'final_dense', None)
                 logit = tf.squeeze(final_dense, name='logit')
                 self.logit = tf.nn.softmax(logit, name='softmax')
         with tf.variable_scope('auxilary'):
@@ -81,7 +81,7 @@ class Inceptionv3:
             self.auxiliary_outshape = self._compute_output_shape(self.auxiliary_outshape, 1, 'same', 1)
             new_channels =  np.prod(self.auxiliary_outshape).astype(np.int32) * 128
             auxiliary_conv1x1_reshape = tf.reshape(auxiliary_conv1x1, [-1, 1, 1, new_channels], name='auxiliary_conv1x1_reshape')
-            auxiliary_final_dense = self._conv_bn_activation(auxiliary_conv1x1_reshape, 1000, 1, 1, 'valid', 'auxiliary_final_dense', None)
+            auxiliary_final_dense = self._conv_bn_activation(auxiliary_conv1x1_reshape, self.num_classes, 1, 1, 'valid', 'auxiliary_final_dense', None)
             auxiliary_logit = tf.squeeze(auxiliary_final_dense, name='logit')
             auxiliary_loss = 0.4 * tf.losses.softmax_cross_entropy(self.labels, auxiliary_logit, label_smoothing=0.1, reduction=tf.losses.Reduction.MEAN)
 
