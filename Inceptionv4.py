@@ -42,11 +42,11 @@ class Inceptionv4:
             conv1_3 = self._conv_bn_activation(conv1_2, 64, 3, 1, 'same', 'conv1_3')
             self._compute_output_shape(3, 'same', 1)
 
-            stem_grid_size_reduction1 = self._stem_grid_size_reduction(conv1_3, 96, 3, 'stem_grid_size_reduction1')
+            stem_grid_size_reduction1 = self._stem_grid_size_reduction(conv1_3, 96, 'stem_grid_size_reduction1')
             self._compute_output_shape(3, 'valid', 2)
             stem_inception1 = self._stem_inception_block(stem_grid_size_reduction1, [64, 96], 'stem_inception1')
             self._compute_output_shape(3, 'valid', 1)
-            stem_grid_size_reduction2 = self._stem_grid_size_reduction(stem_inception1, 192, 3, 'stem_grid_size_reduction2')
+            stem_grid_size_reduction2 = self._stem_grid_size_reduction(stem_inception1, 192, 'stem_grid_size_reduction2')
             self._compute_output_shape(3, 'valid', 2)
 
         with tf.variable_scope('inception_a'):
@@ -224,10 +224,10 @@ class Inceptionv4:
             name=name
         )
 
-    def _stem_grid_size_reduction(self, bottom, filters, pool_size, scope):
+    def _stem_grid_size_reduction(self, bottom, filters, scope):
         with tf.variable_scope(scope):
             with tf.variable_scope('branch_pool'):
-                branch_pool = self._max_pooling(bottom, pool_size, 2, 'valid', 'pool')
+                branch_pool = self._max_pooling(bottom, 3, 2, 'valid', 'pool')
 
             with tf.variable_scope('branch_3x3'):
                 branch_3x3 = self._conv_bn_activation(bottom, filters, 3, 2, 'valid', 'conv3x3')
