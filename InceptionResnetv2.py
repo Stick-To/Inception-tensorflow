@@ -5,9 +5,9 @@ import tensorflow as tf
 import numpy as np
 
 
-class Inceptionv4:
+class InceptionResnetv2:
 
-    def __init__(self, input_shape, num_classes, l2_rate, keep_prob, data_format):
+    def __init__(self, input_shape, num_classes, weight_decay, keep_prob, data_format):
 
         assert(data_format in ['channels_last', 'channels_first'])
         if data_format == 'channels_last':
@@ -20,11 +20,12 @@ class Inceptionv4:
             self.output_shape = np.array([input_shape[1], input_shape[2]], dtype=np.int32)
 
         self.num_classes = num_classes
-        self.l2_rate = l2_rate
+        self.weight_decay = weight_decay
         self.prob = 1. - keep_prob
+        assert(data_format in ['channels_last', 'channels_first'])
         self.data_format = data_format
-        self.is_training = True
         self.global_step = tf.train.get_or_create_global_step()
+        self.is_training = True
 
         self._define_inputs()
         self._build_graph()
@@ -41,53 +42,55 @@ class Inceptionv4:
         with tf.variable_scope('stem'):
             conv1_1 = self._conv_bn_activation(self.images, 32, 3, 2, 'valid', 'conv1_1')
             self._compute_output_shape(3, 'valid', 2)
-            conv1_2 = self._conv_bn_activation(conv1_1, 32, 3, 1, 'valid', 'conv1_2')
+            conv1_2 = self._conv_bn_activation(conv1_1, 64, 3, 1, 'valid', 'conv1_2')
             self._compute_output_shape(3, 'valid', 1)
             conv1_3 = self._conv_bn_activation(conv1_2, 64, 3, 1, 'same', 'conv1_3')
-            self._compute_output_shape(3, 'same', 1)
-
             stem_grid_size_reduction1 = self._stem_grid_size_reduction(conv1_3, 96, 'stem_grid_size_reduction1')
             self._compute_output_shape(3, 'valid', 2)
-            stem_inception1 = self._stem_inception_block(stem_grid_size_reduction1, [64, 96], 'stem_inception1')
+            stem_inception1 = self._stem_inception_block(stem_grid_size_reduction1, 'stem_inception1')
             self._compute_output_shape(3, 'valid', 1)
             stem_grid_size_reduction2 = self._stem_grid_size_reduction(stem_inception1, 192, 'stem_grid_size_reduction2')
             self._compute_output_shape(3, 'valid', 2)
-
-        with tf.variable_scope('inception_a'):
-            inception_a_1 = self._inception_block_a(stem_grid_size_reduction2, 'inception_a_1')
-            inception_a_2 = self._inception_block_a(inception_a_1, 'inception_a_2')
-            inception_a_3 = self._inception_block_a(inception_a_2, 'inception_a_3')
-            inception_a_4 = self._inception_block_a(inception_a_3, 'inception_a_4')
-            inception_a_grid_size_reduction = self._grid_size_reduction_inception_a(inception_a_4, 'inception_a_grid_size_reduction')
+        with tf.variable_scope('inception_resnet_a'):
+            inception_resnet_a_1 = self._inception_resnet_a(stem_grid_size_reduction2, 'inception_resnet_a_1')
+            inception_resnet_a_2 = self._inception_resnet_a(inception_resnet_a_1, 'inception_resnet_a_2')
+            inception_resnet_a_3 = self._inception_resnet_a(inception_resnet_a_2, 'inception_resnet_a_3')
+            inception_resnet_a_4 = self._inception_resnet_a(inception_resnet_a_3, 'inception_resnet_a_4')
+            inception_resnet_a_5 = self._inception_resnet_a(inception_resnet_a_4, 'inception_resnet_a_5')
+            inception_resnet_a_grid_size_reduction = self._grid_size_reduction_inception_a(inception_resnet_a_5, 'inception_resnet_a_grid_size_reduction')
             self._compute_output_shape(3, 'valid', 2)
-        with tf.variable_scope('inception_b'):
-            inception_b_1 = self._inception_block_b(inception_a_grid_size_reduction, 'inception_b_1')
-            inception_b_2 = self._inception_block_b(inception_b_1, 'inception_b_2')
-            inception_b_3 = self._inception_block_b(inception_b_2, 'inception_b_3')
-            inception_b_4 = self._inception_block_b(inception_b_3, 'inception_b_4')
-            inception_b_5 = self._inception_block_b(inception_b_4, 'inception_b_5')
-            inception_b_6 = self._inception_block_b(inception_b_5, 'inception_b_6')
-            inception_b_7 = self._inception_block_b(inception_b_6, 'inception_b_7')
-            inception_b_grid_size_reduction = self._grid_size_reduction_inception_b(inception_b_7, 'inception_b_grid_size_reduction')
+        with tf.variable_scope('inception_resnet_b'):
+            inception_resnet_b_1 = self._inception_resnet_b(inception_resnet_a_grid_size_reduction, 'inception_resnet_b_1')
+            inception_resnet_b_2 = self._inception_resnet_b(inception_resnet_b_1, 'inception_resnet_b_2')
+            inception_resnet_b_3 = self._inception_resnet_b(inception_resnet_b_2, 'inception_resnet_b_3')
+            inception_resnet_b_4 = self._inception_resnet_b(inception_resnet_b_3, 'inception_resnet_b_4')
+            inception_resnet_b_5 = self._inception_resnet_b(inception_resnet_b_4, 'inception_resnet_b_5')
+            inception_resnet_b_6 = self._inception_resnet_b(inception_resnet_b_5, 'inception_resnet_b_6')
+            inception_resnet_b_7 = self._inception_resnet_b(inception_resnet_b_6, 'inception_resnet_b_7')
+            inception_resnet_b_8 = self._inception_resnet_b(inception_resnet_b_7, 'inception_resnet_b_8')
+            inception_resnet_b_9 = self._inception_resnet_b(inception_resnet_b_8, 'inception_resnet_b_9')
+            inception_resnet_b_10 = self._inception_resnet_b(inception_resnet_b_9, 'inception_resnet_b_10')
+            inception_resnet_b_grid_size_reduction = self._grid_size_reduction_inception_b(inception_resnet_b_10, 'inception_resnet_b_grid_size_reduction')
             self._compute_output_shape(3, 'valid', 2)
-        with tf.variable_scope('inception_c'):
-            inception_c_1 = self._inception_block_c(inception_b_grid_size_reduction, 'inception_c_1')
-            inception_c_2 = self._inception_block_c(inception_c_1, 'inception_c_2')
-            inception_c_3 = self._inception_block_c(inception_c_2, 'inception_c_3')
+        with tf.variable_scope('inception_resnet_c'):
+            inception_resnet_c_1 = self._inception_resnet_c(inception_resnet_b_grid_size_reduction, 'inception_resnet_c_1')
+            inception_resnet_c_2 = self._inception_resnet_c(inception_resnet_c_1, 'inception_resnet_c_2')
+            inception_resnet_c_3 = self._inception_resnet_c(inception_resnet_c_2, 'inception_resnet_c_3')
+            inception_resnet_c_4 = self._inception_resnet_c(inception_resnet_c_3, 'inception_resnet_c_4')
+            inception_resnet_c_5 = self._inception_resnet_c(inception_resnet_c_4, 'inception_resnet_c_5')
         with tf.variable_scope('classifier'):
-            #print(self.output_shape)
-            global_pool = self._avg_pooling(inception_c_3, self.output_shape.astype(np.int32).tolist(), 1, 'valid', 'global_pool')
+            # print(self.output_shape)
+            global_pool = self._avg_pooling(inception_resnet_c_5, self.output_shape.astype(np.int32).tolist(), 1, 'valid', 'global_pool')
             dropout = self._dropout(global_pool, 'dropout')
             final_dense = self._conv_bn_activation(dropout, self.num_classes, 1, 1, 'valid', 'final_dense', None)
             logit = tf.squeeze(final_dense, name='logit')
             self.logit = tf.nn.softmax(logit, name='softmax')
         with tf.variable_scope('optimizer'):
             loss = tf.losses.softmax_cross_entropy(self.labels, logit, label_smoothing=0.1, reduction=tf.losses.Reduction.MEAN)
-            l2_loss = self.l2_rate * tf.add_n(
+            l2_loss = self.weight_decay * tf.add_n(
                 [tf.nn.l2_loss(var) for var in tf.trainable_variables()]
             )
             total_loss = loss + l2_loss
-
             lossavg = tf.train.ExponentialMovingAverage(0.9, name='loss_moveavg')
             lossavg_op = lossavg.apply([total_loss])
             with tf.control_dependencies([lossavg_op]):
@@ -149,7 +152,6 @@ class Inceptionv4:
             sess_ = sess
         logit = sess_.run([self.logit], feed_dict={
                                      self.images: images,
-                                     self.lr: 0.
                                  })
         return logit
 
@@ -238,39 +240,40 @@ class Inceptionv4:
             axes = 3 if self.data_format == 'channels_last' else 1
             return tf.concat([branch_pool, branch_3x3], axis=axes)
 
-    def _stem_inception_block(self, bottom, filters, scope):
+    def _stem_inception_block(self, bottom, scope):
         with tf.variable_scope(scope):
             with tf.variable_scope('branch_1x1x3x3'):
-                branch_1x1x3x3 = self._conv_bn_activation(bottom, filters[0], 1, 1, 'same', 'conv1x1')
-                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, filters[1], 3, 1, 'valid', 'conv3x3')
+                branch_1x1x3x3 = self._conv_bn_activation(bottom, 64, 1, 1, 'same', 'conv1x1')
+                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 96, 3, 1, 'valid', 'conv3x3')
             with tf.variable_scope('branch_1x1x7x7x3x3'):
-                branch_1x1x7x7x3x3 = self._conv_bn_activation(bottom, filters[0], 1, 1, 'same', 'conv1x1')
-                branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, filters[0], [7, 1], 1, 'same', 'conv1x7')
-                branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, filters[0], [1, 7], 1, 'same', 'conv7x1')
-                branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, filters[1], 3, 1, 'valid', 'conv3x3')
+                branch_1x1x7x7x3x3 = self._conv_bn_activation(bottom, 64, 1, 1, 'same', 'conv1x1')
+                branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, 64, [7, 1], 1, 'same', 'conv1x7')
+                branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, 64, [1, 7], 1, 'same', 'conv7x1')
+                branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, 96, 3, 1, 'valid', 'conv3x3')
             axes = 3 if self.data_format == 'channels_last' else 1
             return tf.concat([branch_1x1x3x3, branch_1x1x7x7x3x3], axis=axes)
 
-    def _inception_block_a(self, bottom, scope):
+    def _inception_resnet_a(self, bottom, scope):
         with tf.variable_scope(scope):
-            with tf.variable_scope('branch_pool1x1'):
-                branch_pool1x1 = self._avg_pooling(bottom, 3, 1, 'same', 'pool')
-                branch_pool1x1 = self._conv_bn_activation(branch_pool1x1, 96, 1, 1, 'same', 'conv1x1')
             with tf.variable_scope('branch_1x1'):
-                branch_1x1 = self._conv_bn_activation(bottom, 96, 1, 1, 'same', 'conv1x1')
+                branch_1x1 = self._conv_bn_activation(bottom, 32, 1, 1, 'same', 'conv1x1')
             with tf.variable_scope('branch_1x1x3x3'):
-                branch_1x1x3x3 = self._conv_bn_activation(bottom, 64, 1, 1, 'same', 'conv1x1')
-                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 96, 3, 1, 'same', 'conv3x3')
-            with tf.variable_scope('branch_1x1x5x5'):
-                branch_1x1x5x5 = self._conv_bn_activation(bottom, 64, 1, 1, 'same', 'conv1x1')
-                branch_1x1x5x5 = self._conv_bn_activation(branch_1x1x5x5, 96, 3, 1, 'same', 'conv3x3_1')
-                branch_1x1x5x5 = self._conv_bn_activation(branch_1x1x5x5, 96, 3, 1, 'same', 'conv3x3_2')
-            axes = 3 if self.data_format == 'channels_last' else 1
-            return tf.concat([branch_pool1x1, branch_1x1, branch_1x1x3x3, branch_1x1x5x5], axis=axes)
+                branch_1x1x3x3 = self._conv_bn_activation(bottom, 32, 1, 1, 'same', 'conv1x1')
+                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 32, 3, 1, 'same', 'conv3x3')
+            with tf.variable_scope('branch_1x1x3x3x3x3'):
+                branch_1x1x3x3x3x3 = self._conv_bn_activation(bottom, 32, 1, 1, 'same', 'conv1x1')
+                branch_1x1x3x3x3x3 = self._conv_bn_activation(branch_1x1x3x3x3x3, 48, 3, 1, 'same', 'conv3x3_1')
+                branch_1x1x3x3x3x3 = self._conv_bn_activation(branch_1x1x3x3x3x3, 64, 3, 1, 'same', 'conv3x3_2')
+            with tf.variable_scope('concat_linear'):
+                axes = 3 if self.data_format == 'channels_last' else 1
+                concat_linear = tf.concat([branch_1x1, branch_1x1x3x3, branch_1x1x3x3x3x3], axis=axes, name='concat')
+                concat_linear = self._conv_bn_activation(concat_linear, 384, 1, 1, 'same', 'conv1x1', None)
+            residual_add = concat_linear + bottom
+            return residual_add
 
     def _grid_size_reduction_inception_a(self, bottom, scope):
+        k, l, m, n = (256, 256, 384, 384)
         with tf.variable_scope(scope):
-            k, l, m, n=(192, 224, 256, 384)
             with tf.variable_scope('branch_pool'):
                 branch_pool = self._max_pooling(bottom, 3, 2, 'valid', 'pool')
             with tf.variable_scope('branch_3x3'):
@@ -282,63 +285,52 @@ class Inceptionv4:
             axes = 3 if self.data_format == 'channels_last' else 1
             return tf.concat([branch_pool, branch_3x3, branch_1x1x5x5], axis=axes)
 
-    def _inception_block_b(self, bottom, scope):
+    def _inception_resnet_b(self, bottom, scope):
         with tf.variable_scope(scope):
-            with tf.variable_scope('branch_pool1x1'):
-                branch_pool1x1 = self._avg_pooling(bottom, 3, 1, 'same', 'pool')
-                branch_pool1x1 = self._conv_bn_activation(branch_pool1x1, 128, 1, 1, 'same', 'conv1x1')
             with tf.variable_scope('branch_1x1'):
-                branch_1x1 = self._conv_bn_activation(bottom, 384, 1, 1, 'same', 'conv1x1')
+                branch_1x1 = self._conv_bn_activation(bottom, 192, 1, 1, 'same', 'conv1x1')
             with tf.variable_scope('branch_1x1x7x7'):
-                branch_1x1x7x7 = self._conv_bn_activation(bottom, 192, 1, 1, 'same', 'conv1x1')
-                branch_1x1x7x7 = self._conv_bn_activation(branch_1x1x7x7, 224, [1, 7], 1, 'same', 'conv1x7')
-                branch_1x1x7x7 = self._conv_bn_activation(branch_1x1x7x7, 256, [7, 1], 1, 'same', 'conv7x1')
-            with tf.variable_scope('branch_1x1x7x7x7x7'):
-                branch_1x1x7x7x7x7 = self._conv_bn_activation(bottom, 192, 1, 1, 'same', 'conv1x1')
-                branch_1x1x7x7x7x7 = self._conv_bn_activation(branch_1x1x7x7x7x7, 192, [1, 7], 1, 'same', 'conv1x7_1')
-                branch_1x1x7x7x7x7 = self._conv_bn_activation(branch_1x1x7x7x7x7, 224, [7, 1], 1, 'same', 'conv7x1_1')
-                branch_1x1x7x7x7x7 = self._conv_bn_activation(branch_1x1x7x7x7x7, 224, [1, 7], 1, 'same', 'conv1x7_2')
-                branch_1x1x7x7x7x7 = self._conv_bn_activation(branch_1x1x7x7x7x7, 256, [7, 1], 1, 'same', 'conv7x1_2')
-            axes = 3 if self.data_format == 'channels_last' else 1
-            return tf.concat([branch_pool1x1, branch_1x1, branch_1x1x7x7, branch_1x1x7x7x7x7], axis=axes)
+                branch_1x1x7x7 = self._conv_bn_activation(bottom, 128, 1, 1, 'same', 'conv1x1')
+                branch_1x1x7x7 = self._conv_bn_activation(branch_1x1x7x7, 160, [1, 7], 1, 'same', 'conv1x7')
+                branch_1x1x7x7 = self._conv_bn_activation(branch_1x1x7x7, 192, [7, 1], 1, 'same', 'conv7x1')
+            with tf.variable_scope('concat_linear'):
+                axes = 3 if self.data_format == 'channels_last' else 1
+                concat_linear = tf.concat([branch_1x1, branch_1x1x7x7], axis=axes, name='concat')
+                concat_linear = self._conv_bn_activation(concat_linear, 1152, 1, 1, 'same', 'conv1x1', None)
+            residual_add = concat_linear + bottom
+            return residual_add
 
     def _grid_size_reduction_inception_b(self, bottom, scope):
         with tf.variable_scope(scope):
-            with tf.variable_scope('branch_pool'):
-                branch_pool = self._max_pooling(bottom, 3, 2, 'valid', 'pool')
+            with tf.variable_scope('branch_3x3'):
+                branch_3x3 = self._max_pooling(bottom, 3, 2, 'valid', 'pool')
+            with tf.variable_scope('branch_1x1x3x3_1'):
+                branch_1x1x3x3_1 = self._conv_bn_activation(bottom, 256, 1, 1, 'same', 'conv1x1')
+                branch_1x1x3x3_1 = self._conv_bn_activation(branch_1x1x3x3_1, 384, 3, 2, 'valid', 'conv3x3')
+            with tf.variable_scope('branch_1x1x3x3_2'):
+                branch_1x1x3x3_2 = self._conv_bn_activation(bottom, 256, 1, 1, 'same', 'conv1x1')
+                branch_1x1x3x3_2 = self._conv_bn_activation(branch_1x1x3x3_2, 288, 3, 2, 'valid', 'conv3x3')
+            with tf.variable_scope('branch_1x1x3x3x3x3'):
+                branch_1x1x3x3x3x3 = self._conv_bn_activation(bottom, 256, 1, 1, 'same', 'conv1x1')
+                branch_1x1x3x3x3x3 = self._conv_bn_activation(branch_1x1x3x3x3x3, 288, 3, 1, 'same', 'conv3x3_1')
+                branch_1x1x3x3x3x3 = self._conv_bn_activation(branch_1x1x3x3x3x3, 320, 3, 2, 'valid', 'conv3x3_2')
+            axes = 3 if self.data_format == 'channels_last' else 1
+            return tf.concat([branch_3x3, branch_1x1x3x3_1, branch_1x1x3x3_2, branch_1x1x3x3x3x3], axis=axes)
+
+    def _inception_resnet_c(self, bottom, scope):
+        with tf.variable_scope(scope):
+            with tf.variable_scope('branch_1x1'):
+                branch_1x1 = self._conv_bn_activation(bottom, 192, 1, 1, 'same', 'conv1x1')
             with tf.variable_scope('branch_1x1x3x3'):
                 branch_1x1x3x3 = self._conv_bn_activation(bottom, 192, 1, 1, 'same', 'conv1x1')
-                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 192, 3, 2, 'valid', 'conv3x3')
-            with tf.variable_scope('branch_1x1x7x7x3x3'):
-                branch_1x1x7x7x3x3 = self._conv_bn_activation(bottom, 256, 1, 1, 'same', 'conv1x1')
-                branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, 256, [1, 7], 1, 'same', 'conv1x7')
-                branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, 320, [7, 1], 1, 'same', 'conv7x1')
-                branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, 320, 3, 2, 'valid', 'conv3x3')
-            axes = 3 if self.data_format == 'channels_last' else 1
-            return tf.concat([branch_pool, branch_1x1x3x3, branch_1x1x7x7x3x3], axis=axes)
-
-    def _inception_block_c(self, bottom, scope):
-        with tf.variable_scope(scope):
-            with tf.variable_scope('branch_pool1x1'):
-                branch_pool1x1 = self._avg_pooling(bottom, 3, 1, 'same', 'pool')
-                branch_pool1x1 = self._conv_bn_activation(branch_pool1x1, 256, 1, 1, 'same', 'conv1x1')
-            with tf.variable_scope('branch_1x1'):
-                branch_1x1 = self._conv_bn_activation(bottom, 256, 1, 1, 'same', 'conv1x1')
-            with tf.variable_scope('branch_1x1x3x3'):
-                branch_1x1x3x3 = self._conv_bn_activation(bottom, 384, 1, 1, 'same', 'conv1x1')
-                branch_1x1x3x3_1 = self._conv_bn_activation(branch_1x1x3x3, 256, [1, 3], 1, 'same', 'conv1x3')
-                branch_1x1x3x3_2 = self._conv_bn_activation(branch_1x1x3x3, 256, [3, 1], 1, 'same', 'conv3x1')
+                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 224, [1, 3], 1, 'same', 'conv1x3')
+                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 256, [3, 1], 1, 'same', 'conv3x1')
+            with tf.variable_scope('concat_linear'):
                 axes = 3 if self.data_format == 'channels_last' else 1
-                branch_1x1x3x3 = tf.concat([branch_1x1x3x3_1, branch_1x1x3x3_2], axis=axes)
-            with tf.variable_scope('branch_1x1x3x3x3x3'):
-                branch_1x1x3x3x3x3 = self._conv_bn_activation(bottom, 384, 1, 1, 'same', 'conv1x1')
-                branch_1x1x3x3x3x3 = self._conv_bn_activation(branch_1x1x3x3x3x3, 448, [1, 3], 1, 'same', 'conv1x3_1')
-                branch_1x1x3x3x3x3 = self._conv_bn_activation(branch_1x1x3x3x3x3, 512, [3, 1], 1, 'same', 'conv3x1_1')
-                branch_1x1x3x3x3x3_1 = self._conv_bn_activation(branch_1x1x3x3x3x3, 256, [1, 3], 1, 'same', 'conv1x3_2')
-                branch_1x1x3x3x3x3_2 = self._conv_bn_activation(branch_1x1x3x3x3x3, 256, [3, 1], 1, 'same', 'conv3x1_2')
-                branch_1x1x3x3x3x3 = tf.concat([branch_1x1x3x3x3x3_1, branch_1x1x3x3x3x3_2], axis=axes)
-            axes = 3 if self.data_format == 'channels_last' else 1
-            return tf.concat([branch_pool1x1, branch_1x1, branch_1x1x3x3, branch_1x1x3x3x3x3], axis=axes)
+                concat_linear = tf.concat([branch_1x1, branch_1x1x3x3], axis=axes, name='concat')
+                concat_linear = self._conv_bn_activation(concat_linear, 2144, 1, 1, 'same', 'conv1x1', None)
+            residual_add = concat_linear + bottom
+            return residual_add
 
     def _compute_output_shape(self, kernel, padding, strides):
         assert(padding in ['same', 'valid'])

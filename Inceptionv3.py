@@ -9,17 +9,22 @@ class Inceptionv3:
 
     def __init__(self, input_shape, num_classes, l2_rate, keep_prob, data_format):
 
-        assert((input_shape[0] >= 43) & (input_shape[1] >= 43))
-        self.input_shape = input_shape
+        assert(data_format in ['channels_last', 'channels_first'])
+        if data_format == 'channels_last':
+            assert((input_shape[0] >= 43) & (input_shape[1] >= 43))
+            self.input_shape = input_shape
+            self.output_shape = np.array([input_shape[0], input_shape[1]], dtype=np.int32)
+        else:
+            assert((input_shape[1] >= 43) & (input_shape[2] >= 43))
+            self.input_shape = input_shape
+            self.output_shape = np.array([input_shape[1], input_shape[2]], dtype=np.int32)
+
         self.num_classes = num_classes
         self.l2_rate = l2_rate
         self.prob = 1. - keep_prob
         self.global_step = tf.train.get_or_create_global_step()
         self.is_training = True
-
-        assert(data_format in ['channels_last', 'channels_first'])
         self.data_format = data_format
-        self.output_shape = np.array([input_shape[0], input_shape[1]], dtype=np.int32)
 
         self._define_input()
         self._build_graph()

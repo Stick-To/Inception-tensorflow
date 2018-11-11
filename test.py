@@ -3,8 +3,7 @@ from __future__ import division
 from __future__ import print_function
 import numpy as np
 
-import Inceptionv3 as net
-import Inceptionv4 as net
+
 
 from keras.preprocessing.image import ImageDataGenerator
 import sys
@@ -25,8 +24,12 @@ reduce_lr_epoch = [i for i in range(2, epochs , 2)]
 train_gen = ImageDataGenerator()
 test_gen = ImageDataGenerator()
 
-#testnet = net.Inceptionv3(data_shape, num_classes, l2_rate, keep_prob, 'channels_last')
-testnet = net.Inceptionv4(data_shape, num_classes, l2_rate, keep_prob, 'channels_last')
+# import Inceptionv3 as net
+# testnet = net.Inceptionv3(data_shape, num_classes, l2_rate, keep_prob, 'channels_last')
+# import Inceptionv4 as net
+# testnet = net.Inceptionv4(data_shape, num_classes, l2_rate, keep_prob, 'channels_last')
+import InceptionResnetv2 as net
+testnet = net.InceptionResnetv2(data_shape, num_classes, l2_rate, keep_prob, 'channels_last')
 
 for epoch in range(epochs):
     print('-'*20, 'epoch', epoch, '-'*20)
