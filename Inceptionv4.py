@@ -7,7 +7,7 @@ import numpy as np
 
 class Inceptionv4:
 
-    def __init__(self, input_shape, num_classes, l2_rate, keep_prob, data_format):
+    def __init__(self, input_shape, num_classes, weight_decay, keep_prob, data_format):
 
         assert(data_format in ['channels_last', 'channels_first'])
         if data_format == 'channels_last':
@@ -20,7 +20,7 @@ class Inceptionv4:
             self.output_shape = np.array([input_shape[1], input_shape[2]], dtype=np.int32)
 
         self.num_classes = num_classes
-        self.l2_rate = l2_rate
+        self.weight_decay = weight_decay
         self.prob = 1. - keep_prob
         self.data_format = data_format
         self.is_training = True
@@ -83,7 +83,7 @@ class Inceptionv4:
             self.logit = tf.nn.softmax(logit, name='softmax')
         with tf.variable_scope('optimizer'):
             loss = tf.losses.softmax_cross_entropy(self.labels, logit, label_smoothing=0.1, reduction=tf.losses.Reduction.MEAN)
-            l2_loss = self.l2_rate * tf.add_n(
+            l2_loss = self.weight_decay * tf.add_n(
                 [tf.nn.l2_loss(var) for var in tf.trainable_variables()]
             )
             total_loss = loss + l2_loss
