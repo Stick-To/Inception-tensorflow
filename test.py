@@ -36,7 +36,6 @@ for epoch in range(epochs):
     train_acc = []
     train_loss = []
     test_acc = []
-    test_loss = []
 
     # reduce learning rate
     if epoch in reduce_lr_epoch:
@@ -64,14 +63,12 @@ for epoch in range(epochs):
         images,labels = test_gen.next()
         images = images / 127.5 - 1
         # validate_one_batch also can accept your own session
-        loss, acc = testnet.validate_one_batch(images,labels)
+        logit, acc = testnet.validate_one_batch(images,labels)
         test_acc.append(acc)
-        test_loss.append(loss)
-        sys.stdout.write("\r>> test "+str(iter+1)+'/'+str(num_test//test_batch_size)+' loss '+str(loss)+' acc '+str(test_acc))
-    mean_val_loss = np.mean(test_loss)
+        sys.stdout.write("\r>> test "+str(iter+1)+'/'+str(num_test//test_batch_size)+' acc '+str(acc))
     mean_val_acc = np.mean(test_acc)
     sys.stdout.write("\n")
-    print('>> epoch', epoch, 'test mean loss',mean_val_acc,' test mean acc', mean_val_acc)
+    print('>> epoch', epoch, ' test mean acc', mean_val_acc)
 
     # logit = testnet.test(images)
     # testnet.save_weight(self, mode, path, sess=None)
