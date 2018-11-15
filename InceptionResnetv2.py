@@ -27,6 +27,8 @@ class InceptionResnetv2:
         self.global_step = tf.train.get_or_create_global_step()
         self.is_training = True
 
+        self.last_linear_activation_scaling = 0.1
+
         self._define_inputs()
         self._build_graph()
         self._init_session()
@@ -77,10 +79,10 @@ class InceptionResnetv2:
             inception_resnet_c_2 = self._inception_resnet_c(inception_resnet_c_1, 'inception_resnet_c_2')
             inception_resnet_c_3 = self._inception_resnet_c(inception_resnet_c_2, 'inception_resnet_c_3')
             inception_resnet_c_4 = self._inception_resnet_c(inception_resnet_c_3, 'inception_resnet_c_4')
-            inception_resnet_c_5 = self._inception_resnet_c(inception_resnet_c_4, 'inception_resnet_c_5')
+            inception_resnet_c_scaling_5 = self._inception_resnet_c_scaling(inception_resnet_c_4, self.last_linear_activation_scaling, 'inception_resnet_c_scaling_5')
         with tf.variable_scope('classifier'):
             # print(self.output_shape)
-            global_pool = self._avg_pooling(inception_resnet_c_5, self.output_shape.astype(np.int32).tolist(), 1, 'valid', 'global_pool')
+            global_pool = self._avg_pooling(inception_resnet_c_scaling_5, self.output_shape.astype(np.int32).tolist(), 1, 'valid', 'global_pool')
             dropout = self._dropout(global_pool, 'dropout')
             final_dense = self._conv_bn_activation(dropout, self.num_classes, 1, 1, 'valid', 'final_dense', None)
             logit = tf.squeeze(final_dense, name='logit')
@@ -330,6 +332,20 @@ class InceptionResnetv2:
                 concat_linear = tf.concat([branch_1x1, branch_1x1x3x3], axis=axes, name='concat')
                 concat_linear = self._conv_bn_activation(concat_linear, 2144, 1, 1, 'same', 'conv1x1', None)
             residual_add = concat_linear + bottom
+            return residual_add
+    def _inception_resnet_c_scaling(self, bottom, scaling, scope):
+        with tf.variable_scope(scope):
+            with tf.variable_scope('branch_1x1'):
+                branch_1x1 = self._conv_bn_activation(bottom, 192, 1, 1, 'same', 'conv1x1')
+            with tf.variable_scope('branch_1x1x3x3'):
+                branch_1x1x3x3 = self._conv_bn_activation(bottom, 192, 1, 1, 'same', 'conv1x1')
+                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 224, [1, 3], 1, 'same', 'conv1x3')
+                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 256, [3, 1], 1, 'same', 'conv3x1')
+            with tf.variable_scope('concat_linear'):
+                axes = 3 if self.data_format == 'channels_last' else 1
+                concat_linear = tf.concat([branch_1x1, branch_1x1x3x3], axis=axes, name='concat')
+                concat_linear = self._conv_bn_activation(concat_linear, 2144, 1, 1, 'same', 'conv1x1', None)
+            residual_add = concat_linear + scaling * bottom
             return residual_add
 
     def _compute_output_shape(self, kernel, padding, strides):

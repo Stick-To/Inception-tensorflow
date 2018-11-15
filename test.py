@@ -2,11 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import numpy as np
-
-
-
 from keras.preprocessing.image import ImageDataGenerator
 import sys
+
 
 data_shape = (75, 75, 3)
 num_train = 50000
@@ -19,7 +17,7 @@ weight_decay = 1e-4
 keep_prob = 0.7
 lr = 0.045
 # epochs reduce learning_rate by 0.94
-reduce_lr_epoch = [i for i in range(2, epochs , 2)]
+reduce_lr_epoch = [i for i in range(2, epochs, 2)]
 
 train_gen = ImageDataGenerator()
 test_gen = ImageDataGenerator()
@@ -40,7 +38,7 @@ for epoch in range(epochs):
     # reduce learning rate
     if epoch in reduce_lr_epoch:
         lr = lr * 0.94
-        print('reduce learning lr =', lr, 'now' )
+        print('reduce learning lr =', lr, 'now')
 
     # train one epoch
     for iter in range(num_train//train_batch_size):
