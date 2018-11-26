@@ -7,7 +7,7 @@ import numpy as np
 
 class InceptionResnetv2:
 
-    def __init__(self, input_shape, num_classes, weight_decay, keep_prob, data_format):
+    def __init__(self, input_shape, num_classes, weight_decay, keep_prob, data_format, config):
 
         assert(data_format in ['channels_last', 'channels_first'])
         if data_format == 'channels_last':
@@ -24,9 +24,15 @@ class InceptionResnetv2:
         self.prob = 1. - keep_prob
         assert(data_format in ['channels_last', 'channels_first'])
         self.data_format = data_format
+        if config is not None:
+            self.is_SENet = config['is_SENet']
+            if config['is_SENet']:
+                self.reduction = config['reduction']
+        else:
+            self.is_SENet = False
+
         self.global_step = tf.train.get_or_create_global_step()
         self.is_training = True
-
         self.last_linear_activation_scaling = 0.1
 
         self._define_inputs()
@@ -42,11 +48,11 @@ class InceptionResnetv2:
 
     def _build_graph(self):
         with tf.variable_scope('stem'):
-            conv1_1 = self._conv_bn_activation(self.images, 32, 3, 2, 'valid', 'conv1_1')
+            conv1_1 = self._conv_bn_activation(self.images, 32, 3, 2, 'valid')
             self._compute_output_shape(3, 'valid', 2)
-            conv1_2 = self._conv_bn_activation(conv1_1, 64, 3, 1, 'valid', 'conv1_2')
+            conv1_2 = self._conv_bn_activation(conv1_1, 64, 3, 1, 'valid')
             self._compute_output_shape(3, 'valid', 1)
-            conv1_3 = self._conv_bn_activation(conv1_2, 64, 3, 1, 'same', 'conv1_3')
+            conv1_3 = self._conv_bn_activation(conv1_2, 64, 3, 1, 'same')
             stem_grid_size_reduction1 = self._stem_grid_size_reduction(conv1_3, 96, 'stem_grid_size_reduction1')
             self._compute_output_shape(3, 'valid', 2)
             stem_inception1 = self._stem_inception_block(stem_grid_size_reduction1, 'stem_inception1')
@@ -84,7 +90,7 @@ class InceptionResnetv2:
             # print(self.output_shape)
             global_pool = self._avg_pooling(inception_resnet_c_scaling_5, self.output_shape.astype(np.int32).tolist(), 1, 'valid', 'global_pool')
             dropout = self._dropout(global_pool, 'dropout')
-            final_dense = self._conv_bn_activation(dropout, self.num_classes, 1, 1, 'valid', 'final_dense', None)
+            final_dense = self._conv_bn_activation(dropout, self.num_classes, 1, 1, 'valid', None)
             logit = tf.squeeze(final_dense, name='logit')
             self.logit = tf.nn.softmax(logit, name='softmax')
         with tf.variable_scope('optimizer'):
@@ -181,26 +187,48 @@ class InceptionResnetv2:
         else:
             raise FileNotFoundError('Not Found Model File!')
 
-    def _conv_bn_activation(self, bottom, filters, kernel_size, strides, padding, scope, activation=tf.nn.relu):
+    def _conv_bn_activation(self, bottom, filters, kernel_size, strides, padding, activation=tf.nn.relu):
         assert(padding in ['same', 'valid'])
-        with tf.variable_scope(scope):
-            conv = tf.layers.conv2d(
-                inputs=bottom,
-                filters=filters,
-                kernel_size=kernel_size,
-                strides=strides,
-                padding=padding,
-                data_format=self.data_format
-            )
-            bn = tf.layers.batch_normalization(
-                inputs=conv,
-                axis=3 if self.data_format == 'channels_last' else 1,
-                training=self.is_training
-            )
-            if activation is not None:
-                return activation(bn)
-            else:
-                return bn
+        conv = tf.layers.conv2d(
+            inputs=bottom,
+            filters=filters,
+            kernel_size=kernel_size,
+            strides=strides,
+            padding=padding,
+            data_format=self.data_format
+        )
+        bn = tf.layers.batch_normalization(
+            inputs=conv,
+            axis=3 if self.data_format == 'channels_last' else 1,
+            training=self.is_training
+        )
+        if activation is not None:
+            return activation(bn)
+        else:
+            return bn
+
+    # squeeze-and-excitation block
+    def squeeze_and_excitation(self, bottom):
+        axes = [2, 3] if self.data_format == 'channels_first' else [1, 2]
+        channels = bottom.get_shape()[1] if self.data_format == 'channels_first' else bottom.get_shape()[3]
+        average_pool = tf.reduce_mean(
+            input_tensor=bottom,
+            axis=axes,
+            keepdims=False,
+        )
+        fc_layer1 = tf.layers.dense(
+            inputs=average_pool,
+            units=int(channels // self.reduction),
+            activation=tf.nn.relu,
+        )
+        fc_layer2 = tf.layers.dense(
+            inputs=fc_layer1,
+            units=channels,
+            activation=tf.nn.sigmoid,
+        )
+        weight = tf.reshape(fc_layer2, [-1, 1, 1, channels])
+        scaled = weight * bottom
+        return scaled
 
     def _max_pooling(self, bottom, pool_size, strides, padding, name):
         assert(padding in ['same', 'valid'])
@@ -238,38 +266,38 @@ class InceptionResnetv2:
                 branch_pool = self._max_pooling(bottom, 3, 2, 'valid', 'pool')
 
             with tf.variable_scope('branch_3x3'):
-                branch_3x3 = self._conv_bn_activation(bottom, filters, 3, 2, 'valid', 'conv3x3')
+                branch_3x3 = self._conv_bn_activation(bottom, filters, 3, 2, 'valid')
             axes = 3 if self.data_format == 'channels_last' else 1
             return tf.concat([branch_pool, branch_3x3], axis=axes)
 
     def _stem_inception_block(self, bottom, scope):
         with tf.variable_scope(scope):
             with tf.variable_scope('branch_1x1x3x3'):
-                branch_1x1x3x3 = self._conv_bn_activation(bottom, 64, 1, 1, 'same', 'conv1x1')
-                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 96, 3, 1, 'valid', 'conv3x3')
+                branch_1x1x3x3 = self._conv_bn_activation(bottom, 64, 1, 1, 'same')
+                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 96, 3, 1, 'valid')
             with tf.variable_scope('branch_1x1x7x7x3x3'):
-                branch_1x1x7x7x3x3 = self._conv_bn_activation(bottom, 64, 1, 1, 'same', 'conv1x1')
-                branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, 64, [7, 1], 1, 'same', 'conv1x7')
-                branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, 64, [1, 7], 1, 'same', 'conv7x1')
-                branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, 96, 3, 1, 'valid', 'conv3x3')
+                branch_1x1x7x7x3x3 = self._conv_bn_activation(bottom, 64, 1, 1, 'same')
+                branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, 64, [7, 1], 1, 'same')
+                branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, 64, [1, 7], 1, 'same')
+                branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, 96, 3, 1, 'valid')
             axes = 3 if self.data_format == 'channels_last' else 1
             return tf.concat([branch_1x1x3x3, branch_1x1x7x7x3x3], axis=axes)
 
     def _inception_resnet_a(self, bottom, scope):
         with tf.variable_scope(scope):
             with tf.variable_scope('branch_1x1'):
-                branch_1x1 = self._conv_bn_activation(bottom, 32, 1, 1, 'same', 'conv1x1')
+                branch_1x1 = self._conv_bn_activation(bottom, 32, 1, 1, 'same')
             with tf.variable_scope('branch_1x1x3x3'):
-                branch_1x1x3x3 = self._conv_bn_activation(bottom, 32, 1, 1, 'same', 'conv1x1')
-                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 32, 3, 1, 'same', 'conv3x3')
+                branch_1x1x3x3 = self._conv_bn_activation(bottom, 32, 1, 1, 'same')
+                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 32, 3, 1, 'same')
             with tf.variable_scope('branch_1x1x3x3x3x3'):
-                branch_1x1x3x3x3x3 = self._conv_bn_activation(bottom, 32, 1, 1, 'same', 'conv1x1')
-                branch_1x1x3x3x3x3 = self._conv_bn_activation(branch_1x1x3x3x3x3, 48, 3, 1, 'same', 'conv3x3_1')
-                branch_1x1x3x3x3x3 = self._conv_bn_activation(branch_1x1x3x3x3x3, 64, 3, 1, 'same', 'conv3x3_2')
+                branch_1x1x3x3x3x3 = self._conv_bn_activation(bottom, 32, 1, 1, 'same')
+                branch_1x1x3x3x3x3 = self._conv_bn_activation(branch_1x1x3x3x3x3, 48, 3, 1, 'same')
+                branch_1x1x3x3x3x3 = self._conv_bn_activation(branch_1x1x3x3x3x3, 64, 3, 1, 'same')
             with tf.variable_scope('concat_linear'):
                 axes = 3 if self.data_format == 'channels_last' else 1
                 concat_linear = tf.concat([branch_1x1, branch_1x1x3x3, branch_1x1x3x3x3x3], axis=axes, name='concat')
-                concat_linear = self._conv_bn_activation(concat_linear, 384, 1, 1, 'same', 'conv1x1', None)
+                concat_linear = self._conv_bn_activation(concat_linear, 384, 1, 1, 'same', None)
             residual_add = concat_linear + bottom
             return residual_add
 
@@ -279,26 +307,26 @@ class InceptionResnetv2:
             with tf.variable_scope('branch_pool'):
                 branch_pool = self._max_pooling(bottom, 3, 2, 'valid', 'pool')
             with tf.variable_scope('branch_3x3'):
-                branch_3x3 = self._conv_bn_activation(bottom, n, 3, 2, 'valid', 'conv3x3')
+                branch_3x3 = self._conv_bn_activation(bottom, n, 3, 2, 'valid')
             with tf.variable_scope('branch_1x1x5x5'):
-                branch_1x1x5x5 = self._conv_bn_activation(bottom, k, 1, 1, 'same', 'conv1x1')
-                branch_1x1x5x5 = self._conv_bn_activation(branch_1x1x5x5, l, 3, 1, 'same', 'conv3x3_1')
-                branch_1x1x5x5 = self._conv_bn_activation(branch_1x1x5x5, m, 3, 2, 'valid', 'conv3x3_2')
+                branch_1x1x5x5 = self._conv_bn_activation(bottom, k, 1, 1, 'same')
+                branch_1x1x5x5 = self._conv_bn_activation(branch_1x1x5x5, l, 3, 1, 'same')
+                branch_1x1x5x5 = self._conv_bn_activation(branch_1x1x5x5, m, 3, 2, 'valid')
             axes = 3 if self.data_format == 'channels_last' else 1
             return tf.concat([branch_pool, branch_3x3, branch_1x1x5x5], axis=axes)
 
     def _inception_resnet_b(self, bottom, scope):
         with tf.variable_scope(scope):
             with tf.variable_scope('branch_1x1'):
-                branch_1x1 = self._conv_bn_activation(bottom, 192, 1, 1, 'same', 'conv1x1')
+                branch_1x1 = self._conv_bn_activation(bottom, 192, 1, 1, 'same')
             with tf.variable_scope('branch_1x1x7x7'):
-                branch_1x1x7x7 = self._conv_bn_activation(bottom, 128, 1, 1, 'same', 'conv1x1')
-                branch_1x1x7x7 = self._conv_bn_activation(branch_1x1x7x7, 160, [1, 7], 1, 'same', 'conv1x7')
-                branch_1x1x7x7 = self._conv_bn_activation(branch_1x1x7x7, 192, [7, 1], 1, 'same', 'conv7x1')
+                branch_1x1x7x7 = self._conv_bn_activation(bottom, 128, 1, 1, 'same')
+                branch_1x1x7x7 = self._conv_bn_activation(branch_1x1x7x7, 160, [1, 7], 1, 'same')
+                branch_1x1x7x7 = self._conv_bn_activation(branch_1x1x7x7, 192, [7, 1], 1, 'same')
             with tf.variable_scope('concat_linear'):
                 axes = 3 if self.data_format == 'channels_last' else 1
                 concat_linear = tf.concat([branch_1x1, branch_1x1x7x7], axis=axes, name='concat')
-                concat_linear = self._conv_bn_activation(concat_linear, 1152, 1, 1, 'same', 'conv1x1', None)
+                concat_linear = self._conv_bn_activation(concat_linear, 1152, 1, 1, 'same', None)
             residual_add = concat_linear + bottom
             return residual_add
 
@@ -307,44 +335,45 @@ class InceptionResnetv2:
             with tf.variable_scope('branch_3x3'):
                 branch_3x3 = self._max_pooling(bottom, 3, 2, 'valid', 'pool')
             with tf.variable_scope('branch_1x1x3x3_1'):
-                branch_1x1x3x3_1 = self._conv_bn_activation(bottom, 256, 1, 1, 'same', 'conv1x1')
-                branch_1x1x3x3_1 = self._conv_bn_activation(branch_1x1x3x3_1, 384, 3, 2, 'valid', 'conv3x3')
+                branch_1x1x3x3_1 = self._conv_bn_activation(bottom, 256, 1, 1, 'same')
+                branch_1x1x3x3_1 = self._conv_bn_activation(branch_1x1x3x3_1, 384, 3, 2, 'valid')
             with tf.variable_scope('branch_1x1x3x3_2'):
-                branch_1x1x3x3_2 = self._conv_bn_activation(bottom, 256, 1, 1, 'same', 'conv1x1')
-                branch_1x1x3x3_2 = self._conv_bn_activation(branch_1x1x3x3_2, 288, 3, 2, 'valid', 'conv3x3')
+                branch_1x1x3x3_2 = self._conv_bn_activation(bottom, 256, 1, 1, 'same')
+                branch_1x1x3x3_2 = self._conv_bn_activation(branch_1x1x3x3_2, 288, 3, 2, 'valid')
             with tf.variable_scope('branch_1x1x3x3x3x3'):
-                branch_1x1x3x3x3x3 = self._conv_bn_activation(bottom, 256, 1, 1, 'same', 'conv1x1')
-                branch_1x1x3x3x3x3 = self._conv_bn_activation(branch_1x1x3x3x3x3, 288, 3, 1, 'same', 'conv3x3_1')
-                branch_1x1x3x3x3x3 = self._conv_bn_activation(branch_1x1x3x3x3x3, 320, 3, 2, 'valid', 'conv3x3_2')
+                branch_1x1x3x3x3x3 = self._conv_bn_activation(bottom, 256, 1, 1, 'same')
+                branch_1x1x3x3x3x3 = self._conv_bn_activation(branch_1x1x3x3x3x3, 288, 3, 1, 'same')
+                branch_1x1x3x3x3x3 = self._conv_bn_activation(branch_1x1x3x3x3x3, 320, 3, 2, 'valid')
             axes = 3 if self.data_format == 'channels_last' else 1
             return tf.concat([branch_3x3, branch_1x1x3x3_1, branch_1x1x3x3_2, branch_1x1x3x3x3x3], axis=axes)
 
     def _inception_resnet_c(self, bottom, scope):
         with tf.variable_scope(scope):
             with tf.variable_scope('branch_1x1'):
-                branch_1x1 = self._conv_bn_activation(bottom, 192, 1, 1, 'same', 'conv1x1')
+                branch_1x1 = self._conv_bn_activation(bottom, 192, 1, 1, 'same')
             with tf.variable_scope('branch_1x1x3x3'):
-                branch_1x1x3x3 = self._conv_bn_activation(bottom, 192, 1, 1, 'same', 'conv1x1')
-                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 224, [1, 3], 1, 'same', 'conv1x3')
-                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 256, [3, 1], 1, 'same', 'conv3x1')
+                branch_1x1x3x3 = self._conv_bn_activation(bottom, 192, 1, 1, 'same')
+                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 224, [1, 3], 1, 'same')
+                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 256, [3, 1], 1, 'same')
             with tf.variable_scope('concat_linear'):
                 axes = 3 if self.data_format == 'channels_last' else 1
                 concat_linear = tf.concat([branch_1x1, branch_1x1x3x3], axis=axes, name='concat')
-                concat_linear = self._conv_bn_activation(concat_linear, 2144, 1, 1, 'same', 'conv1x1', None)
+                concat_linear = self._conv_bn_activation(concat_linear, 2144, 1, 1, 'same', None)
             residual_add = concat_linear + bottom
             return residual_add
+
     def _inception_resnet_c_scaling(self, bottom, scaling, scope):
         with tf.variable_scope(scope):
             with tf.variable_scope('branch_1x1'):
-                branch_1x1 = self._conv_bn_activation(bottom, 192, 1, 1, 'same', 'conv1x1')
+                branch_1x1 = self._conv_bn_activation(bottom, 192, 1, 1, 'same')
             with tf.variable_scope('branch_1x1x3x3'):
-                branch_1x1x3x3 = self._conv_bn_activation(bottom, 192, 1, 1, 'same', 'conv1x1')
-                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 224, [1, 3], 1, 'same', 'conv1x3')
-                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 256, [3, 1], 1, 'same', 'conv3x1')
+                branch_1x1x3x3 = self._conv_bn_activation(bottom, 192, 1, 1, 'same')
+                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 224, [1, 3], 1, 'same')
+                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 256, [3, 1], 1, 'same')
             with tf.variable_scope('concat_linear'):
                 axes = 3 if self.data_format == 'channels_last' else 1
                 concat_linear = tf.concat([branch_1x1, branch_1x1x3x3], axis=axes, name='concat')
-                concat_linear = self._conv_bn_activation(concat_linear, 2144, 1, 1, 'same', 'conv1x1', None)
+                concat_linear = self._conv_bn_activation(concat_linear, 2144, 1, 1, 'same', None)
             residual_add = concat_linear + scaling * bottom
             return residual_add
 

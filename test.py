@@ -15,19 +15,23 @@ test_batch_size = 32
 epochs = 200
 weight_decay = 1e-4
 keep_prob = 0.7
-lr = 0.045
+# lr = 0.045
 # epochs reduce learning_rate by 0.94
 reduce_lr_epoch = [i for i in range(2, epochs, 2)]
 
 train_gen = ImageDataGenerator()
 test_gen = ImageDataGenerator()
 
+config = {
+    'is_SENet': False,
+    'reduction': 16
+}
 # import Inceptionv3 as net
-# testnet = net.Inceptionv3(data_shape, num_classes, weight_decay, keep_prob, 'channels_last')
+# testnet = net.Inceptionv3(data_shape, num_classes, weight_decay, keep_prob, 'channels_last', config)
 # import Inceptionv4 as net
-# testnet = net.Inceptionv4(data_shape, num_classes, weight_decay, keep_prob, 'channels_last')
+# testnet = net.Inceptionv4(data_shape, num_classes, weight_decay, keep_prob, 'channels_last', config)
 import InceptionResnetv2 as net
-testnet = net.InceptionResnetv2(data_shape, num_classes, weight_decay, keep_prob, 'channels_last')
+testnet = net.InceptionResnetv2(data_shape, num_classes, weight_decay, keep_prob, 'channels_last', config)
 
 for epoch in range(epochs):
     print('-'*20, 'epoch', epoch, '-'*20)
