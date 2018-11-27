@@ -1,5 +1,5 @@
 # Inception
-
+have 'SENet' mode
 
 # Inceptionv3
 https://arxiv.org/abs/1512.00567
