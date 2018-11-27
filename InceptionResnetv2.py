@@ -33,8 +33,6 @@ class InceptionResnetv2:
 
         self.global_step = tf.train.get_or_create_global_step()
         self.is_training = True
-        self.last_linear_activation_scaling = 0.1
-
         self._define_inputs()
         self._build_graph()
         self._init_session()
@@ -85,10 +83,10 @@ class InceptionResnetv2:
             inception_resnet_c_2 = self._inception_resnet_c(inception_resnet_c_1, 'inception_resnet_c_2')
             inception_resnet_c_3 = self._inception_resnet_c(inception_resnet_c_2, 'inception_resnet_c_3')
             inception_resnet_c_4 = self._inception_resnet_c(inception_resnet_c_3, 'inception_resnet_c_4')
-            inception_resnet_c_scaling_5 = self._inception_resnet_c_scaling(inception_resnet_c_4, self.last_linear_activation_scaling, 'inception_resnet_c_scaling_5')
+            inception_resnet_c_5 = self._inception_resnet_c(inception_resnet_c_4, 'inception_resnet_c_scaling_5')
         with tf.variable_scope('classifier'):
             # print(self.output_shape)
-            global_pool = self._avg_pooling(inception_resnet_c_scaling_5, self.output_shape.astype(np.int32).tolist(), 1, 'valid', 'global_pool')
+            global_pool = self._avg_pooling(inception_resnet_c_5, self.output_shape.astype(np.int32).tolist(), 1, 'valid', 'global_pool')
             dropout = self._dropout(global_pool, 'dropout')
             final_dense = self._conv_bn_activation(dropout, self.num_classes, 1, 1, 'valid', None)
             logit = tf.squeeze(final_dense, name='logit')
@@ -211,22 +209,22 @@ class InceptionResnetv2:
     def squeeze_and_excitation(self, bottom):
         axes = [2, 3] if self.data_format == 'channels_first' else [1, 2]
         channels = bottom.get_shape()[1] if self.data_format == 'channels_first' else bottom.get_shape()[3]
-        average_pool = tf.reduce_mean(
+        squeeze = tf.reduce_mean(
             input_tensor=bottom,
             axis=axes,
             keepdims=False,
         )
-        fc_layer1 = tf.layers.dense(
-            inputs=average_pool,
+        excitation = tf.layers.dense(
+            inputs=squeeze,
             units=int(channels // self.reduction),
             activation=tf.nn.relu,
         )
-        fc_layer2 = tf.layers.dense(
-            inputs=fc_layer1,
+        excitation = tf.layers.dense(
+            inputs=excitation,
             units=channels,
             activation=tf.nn.sigmoid,
         )
-        weight = tf.reshape(fc_layer2, [-1, 1, 1, channels])
+        weight = tf.reshape(excitation, [-1, 1, 1, channels])
         scaled = weight * bottom
         return scaled
 
@@ -298,8 +296,10 @@ class InceptionResnetv2:
                 axes = 3 if self.data_format == 'channels_last' else 1
                 concat_linear = tf.concat([branch_1x1, branch_1x1x3x3, branch_1x1x3x3x3x3], axis=axes, name='concat')
                 concat_linear = self._conv_bn_activation(concat_linear, 384, 1, 1, 'same', None)
-            residual_add = concat_linear + bottom
-            return residual_add
+            if self.is_SENet:
+                return 0.1 * self.squeeze_and_excitation(concat_linear) + bottom
+            else:
+                return 0.1 * concat_linear + bottom
 
     def _grid_size_reduction_inception_a(self, bottom, scope):
         k, l, m, n = (256, 256, 384, 384)
@@ -327,8 +327,10 @@ class InceptionResnetv2:
                 axes = 3 if self.data_format == 'channels_last' else 1
                 concat_linear = tf.concat([branch_1x1, branch_1x1x7x7], axis=axes, name='concat')
                 concat_linear = self._conv_bn_activation(concat_linear, 1152, 1, 1, 'same', None)
-            residual_add = concat_linear + bottom
-            return residual_add
+            if self.is_SENet:
+                return 0.1 * self.squeeze_and_excitation(concat_linear) + bottom
+            else:
+                return 0.1 * concat_linear + bottom
 
     def _grid_size_reduction_inception_b(self, bottom, scope):
         with tf.variable_scope(scope):
@@ -359,23 +361,10 @@ class InceptionResnetv2:
                 axes = 3 if self.data_format == 'channels_last' else 1
                 concat_linear = tf.concat([branch_1x1, branch_1x1x3x3], axis=axes, name='concat')
                 concat_linear = self._conv_bn_activation(concat_linear, 2144, 1, 1, 'same', None)
-            residual_add = concat_linear + bottom
-            return residual_add
-
-    def _inception_resnet_c_scaling(self, bottom, scaling, scope):
-        with tf.variable_scope(scope):
-            with tf.variable_scope('branch_1x1'):
-                branch_1x1 = self._conv_bn_activation(bottom, 192, 1, 1, 'same')
-            with tf.variable_scope('branch_1x1x3x3'):
-                branch_1x1x3x3 = self._conv_bn_activation(bottom, 192, 1, 1, 'same')
-                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 224, [1, 3], 1, 'same')
-                branch_1x1x3x3 = self._conv_bn_activation(branch_1x1x3x3, 256, [3, 1], 1, 'same')
-            with tf.variable_scope('concat_linear'):
-                axes = 3 if self.data_format == 'channels_last' else 1
-                concat_linear = tf.concat([branch_1x1, branch_1x1x3x3], axis=axes, name='concat')
-                concat_linear = self._conv_bn_activation(concat_linear, 2144, 1, 1, 'same', None)
-            residual_add = concat_linear + scaling * bottom
-            return residual_add
+            if self.is_SENet:
+                return 0.1 * self.squeeze_and_excitation(concat_linear) + bottom
+            else:
+                return 0.1 * concat_linear + bottom
 
     def _compute_output_shape(self, kernel, padding, strides):
         assert(padding in ['same', 'valid'])

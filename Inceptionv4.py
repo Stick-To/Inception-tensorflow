@@ -208,22 +208,22 @@ class Inceptionv4:
     def squeeze_and_excitation(self, bottom):
         axes = [2, 3] if self.data_format == 'channels_first' else [1, 2]
         channels = bottom.get_shape()[1] if self.data_format == 'channels_first' else bottom.get_shape()[3]
-        average_pool = tf.reduce_mean(
+        squeeze = tf.reduce_mean(
             input_tensor=bottom,
             axis=axes,
             keepdims=False,
         )
-        fc_layer1 = tf.layers.dense(
-            inputs=average_pool,
+        excitation = tf.layers.dense(
+            inputs=squeeze,
             units=int(channels // self.reduction),
             activation=tf.nn.relu,
         )
-        fc_layer2 = tf.layers.dense(
-            inputs=fc_layer1,
+        excitation = tf.layers.dense(
+            inputs=excitation,
             units=channels,
             activation=tf.nn.sigmoid,
         )
-        weight = tf.reshape(fc_layer2, [-1, 1, 1, channels])
+        weight = tf.reshape(excitation, [-1, 1, 1, channels])
         scaled = weight * bottom
         return scaled
 
@@ -265,10 +265,7 @@ class Inceptionv4:
             with tf.variable_scope('branch_3x3'):
                 branch_3x3 = self._conv_bn_activation(bottom, filters, 3, 2, 'valid')
             axes = 3 if self.data_format == 'channels_last' else 1
-            if self.is_SENet:
-                return self.squeeze_and_excitation(tf.concat([branch_pool, branch_3x3], axis=axes))
-            else:
-                return tf.concat([branch_pool, branch_3x3], axis=axes)
+            return tf.concat([branch_pool, branch_3x3], axis=axes)
 
     def _stem_inception_block(self, bottom, filters, scope):
         with tf.variable_scope(scope):
@@ -281,10 +278,7 @@ class Inceptionv4:
                 branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, filters[0], [1, 7], 1, 'same')
                 branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, filters[1], 3, 1, 'valid')
             axes = 3 if self.data_format == 'channels_last' else 1
-            if self.is_SENet:
-                return self.squeeze_and_excitation(tf.concat([branch_1x1x3x3, branch_1x1x7x7x3x3], axis=axes))
-            else:
-                return tf.concat([branch_1x1x3x3, branch_1x1x7x7x3x3], axis=axes)
+            return tf.concat([branch_1x1x3x3, branch_1x1x7x7x3x3], axis=axes)
 
     def _inception_block_a(self, bottom, scope):
         with tf.variable_scope(scope):
@@ -318,10 +312,7 @@ class Inceptionv4:
                 branch_1x1x5x5 = self._conv_bn_activation(branch_1x1x5x5, l, 3, 1, 'same')
                 branch_1x1x5x5 = self._conv_bn_activation(branch_1x1x5x5, m, 3, 2, 'valid')
             axes = 3 if self.data_format == 'channels_last' else 1
-            if self.is_SENet:
-                return self.squeeze_and_excitation(tf.concat([branch_pool, branch_3x3, branch_1x1x5x5], axis=axes))
-            else:
-                return tf.concat([branch_pool, branch_3x3, branch_1x1x5x5], axis=axes)
+            return tf.concat([branch_pool, branch_3x3, branch_1x1x5x5], axis=axes)
 
     def _inception_block_b(self, bottom, scope):
         with tf.variable_scope(scope):
@@ -359,10 +350,7 @@ class Inceptionv4:
                 branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, 320, [7, 1], 1, 'same')
                 branch_1x1x7x7x3x3 = self._conv_bn_activation(branch_1x1x7x7x3x3, 320, 3, 2, 'valid')
             axes = 3 if self.data_format == 'channels_last' else 1
-            if self.is_SENet:
-                return self.squeeze_and_excitation(tf.concat([branch_pool, branch_1x1x3x3, branch_1x1x7x7x3x3], axis=axes))
-            else:
-                return tf.concat([branch_pool, branch_1x1x3x3, branch_1x1x7x7x3x3], axis=axes)
+            return tf.concat([branch_pool, branch_1x1x3x3, branch_1x1x7x7x3x3], axis=axes)
 
     def _inception_block_c(self, bottom, scope):
         with tf.variable_scope(scope):
