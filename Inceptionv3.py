@@ -114,8 +114,8 @@ class Inceptionv3:
             grads = optimizer.compute_gradients(self.total_loss)
             clipped_grads = [(tf.clip_by_value(grad, -2., 2.), var) for grad, var in grads]
             train_op = optimizer.apply_gradients(clipped_grads, global_step=self.global_step)
-            # train_op = optimizer.minimize(self.total_loss, global_step=self.global_step)
-            self.train_op = tf.group(lossavg_op, varavg_op, train_op)
+            update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+            self.train_op = tf.group([update_ops, lossavg_op, varavg_op, train_op])
             self.accuracy = tf.reduce_mean(
                 tf.cast(
                     tf.equal(

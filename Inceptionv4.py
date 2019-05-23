@@ -82,7 +82,6 @@ class Inceptionv4:
             inception_c_2 = self._inception_block_c(inception_c_1, 'inception_c_2')
             inception_c_3 = self._inception_block_c(inception_c_2, 'inception_c_3')
         with tf.variable_scope('classifier'):
-            #print(self.output_shape)
             global_pool = self._avg_pooling(inception_c_3, self.output_shape.astype(np.int32).tolist(), 1, 'valid', 'global_pool')
             dropout = self._dropout(global_pool, 'dropout')
             final_dense = self._conv_bn_activation(dropout, self.num_classes, 1, 1, 'valid', None)
@@ -106,8 +105,8 @@ class Inceptionv4:
             grads = optimizer.compute_gradients(self.total_loss)
             clipped_grads = [(tf.clip_by_value(grad, -2., 2.), var) for grad, var in grads]
             train_op = optimizer.apply_gradients(clipped_grads, global_step=self.global_step)
-            # train_op = optimizer.minimize(self.total_loss, global_step=self.global_step)
-            self.train_op = tf.group(lossavg_op, varavg_op, train_op)
+            update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+            self.train_op = tf.group([update_ops, lossavg_op, varavg_op, train_op])
             self.accuracy = tf.reduce_mean(
                 tf.cast(
                     tf.equal(
